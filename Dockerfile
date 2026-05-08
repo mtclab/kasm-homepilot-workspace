@@ -3,7 +3,8 @@ FROM kasmweb/terminal:1.18.0
 # ──────────────────────────────────────────────────────────────
 # HomePilot Workspace — Proxmox homelab management
 # Base: kasmweb/terminal (xfce4-terminal + KasmVNC, no desktop)
-# Tools: hp CLI, Claude Code, OpenCode, uv, gh, dev utilities
+# Tools: Claude Code, OpenCode, uv, gh, dev utilities
+# MCP: connects to a remote homepilot server via HP_MCP_URL
 # Follows Kasm custom image conventions:
 # https://docs.kasm.com/docs/latest/how-to/building_images/
 # ──────────────────────────────────────────────────────────────
@@ -25,11 +26,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     python3 \
     python3-pip \
-    python3-venv \
-    python3-dev \
-    build-essential \
-    pkg-config \
-    libssl-dev \
     gnupg \
     net-tools \
     dnsutils \
@@ -75,15 +71,6 @@ RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENC
     && mv /tmp/opencode /usr/local/bin/opencode \
     && chmod +x /usr/local/bin/opencode \
     && rm /tmp/opencode.tar.gz
-
-# ── homepilot-v2 (hp CLI) in isolated venv ───────────────────
-# Pinned to a ref; override at build time with --build-arg HP_REF=<tag>
-ARG HP_REF=main
-RUN python3 -m venv /opt/hp \
-    && /opt/hp/bin/pip install --no-cache-dir \
-        "homepilot @ git+https://github.com/mtclab/homepilot-v2.git@${HP_REF}"
-
-ENV PATH="/opt/hp/bin:${PATH}"
 
 # ── OpenCode config ───────────────────────────────────────────
 RUN mkdir -p $HOME/.config/opencode

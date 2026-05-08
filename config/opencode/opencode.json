@@ -4,10 +4,6 @@
     "context7": {
       "type": "remote",
       "url": "https://mcp.context7.com/mcp"
-    },
-    "homepilot": {
-      "type": "local",
-      "command": ["/opt/hp/bin/hp", "mcp-serve"]
     }
   }
 }

@@ -1,14 +1,31 @@
 # kasm-homepilot-workspace
 
-A lightweight Kasm Workspaces terminal image for Proxmox homelab management via [homepilot-v2](https://github.com/mtclab/homepilot-v2). Built on `kasmweb/core-ubuntu-noble:1.18.0` (Ubuntu 24.04, headless/terminal), following [Kasm custom image conventions](https://docs.kasm.com/docs/latest/how-to/building_images/).
+Lightweight Kasm Workspaces terminal image for Proxmox homelab management via [homepilot-v2](https://github.com/mtclab/homepilot-v2). Built on `kasmweb/terminal:1.18.0` (Ubuntu 24.04, headless/terminal), following [Kasm custom image conventions](https://docs.kasm.com/docs/latest/how-to/building_images/).
+
+**HomePilot is NOT installed in this image.** It runs separately on your homelab server. This workspace connects to it via MCP over HTTP.
+
+## Architecture
+
+```
+Kasm Workspace (this image)              Homelab Server
+─────────────────────────────            ──────────────────────────────
+  Claude Code ──┐                          hp mcp-serve --transport http
+  OpenCode    ──┼── HTTP MCP ────────────► (port 8000, /mcp endpoint)
+                │   Authorization:              │
+                │   Bearer <token>         homepilot DB, vault,
+                                           artifacts, Proxmox API
+```
+
+MCP wiring is injected at session start from two Kasm workspace env vars:
+- **`HP_MCP_URL`** — e.g. `http://homelab.lan:8000/mcp`
+- **`HP_MCP_TOKEN`** — bearer token (must match `HP_MCP_TOKEN` on the server)
 
 ## What's Included
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| homepilot (`hp`) | main | Proxmox homelab management CLI + MCP server |
-| Claude Code | latest | Anthropic CLI — MCP client wired to `hp mcp-serve` |
-| OpenCode | 1.14.41 | Terminal AI coding agent — MCP client wired to `hp mcp-serve` |
+| Claude Code | latest | Anthropic CLI — MCP client wired to homepilot server |
+| OpenCode | 1.14.41 | Terminal AI coding agent — MCP client wired to homepilot server |
 | uv + uvx | 0.11.8 | Fast Python package/project manager |
 | Node.js 22 LTS | 22.x | Required by Claude Code |
 | GitHub CLI (gh) | latest | GitHub operations |
@@ -16,44 +33,42 @@ A lightweight Kasm Workspaces terminal image for Proxmox homelab management via 
 | ripgrep, fzf | latest | Fast search utilities |
 | curl, wget, jq | latest | HTTP clients and JSON processing |
 
-## MCP Wiring
+## Setup
 
-Both Claude Code and OpenCode are pre-configured to use `hp mcp-serve` (stdio) as their MCP backend:
+### 1. Start HomePilot on your homelab server
 
-- **Claude Code**: `~/.claude/settings.json` → `homepilot` MCP server → `/opt/hp/bin/hp mcp-serve`
-- **OpenCode**: `~/.config/opencode/opencode.json` → `homepilot` local MCP → `/opt/hp/bin/hp mcp-serve`
-
-This means you can ask Claude or OpenCode to manage your Proxmox cluster directly.
-
-## First-Time Setup
-
-HomePilot requires configuration before use. On first session:
+HomePilot must be configured and running before sessions connect to it.
 
 ```bash
-# 1. Create config directory
-mkdir -p ~/.hp
-
-# 2. Generate a secret key
-python3 -c "import secrets; print(secrets.token_hex(32))"
-
-# 3. Create ~/.hp/.env
-cat > ~/.hp/.env << EOF
-HP_SECRET_KEY=<paste generated key>
-HP_PROXMOX_HOST=<your-proxmox-ip>
-HP_PROXMOX_PORT=8006
-HP_PROXMOX_VERIFY_SSL=false
-EOF
-
-# 4. Initialize
+# On the homelab server (one-time setup if not done already)
 hp init
 
-# 5. Start coding
+# Start the MCP HTTP server
+HP_MCP_TOKEN=<your-secret-token> hp mcp-serve --transport http --host 0.0.0.0 --port 8000
+```
+
+Run as a systemd service for persistence (see homepilot-v2 docs).
+
+### 2. Configure the Kasm Workspace
+
+In Kasm **Admin Panel** → **Workspaces** → your workspace → **Environment**:
+
+| Variable | Example value |
+|----------|--------------|
+| `HP_MCP_URL` | `http://192.168.1.10:8000/mcp` |
+| `HP_MCP_TOKEN` | `your-secret-token` |
+
+At session start, the startup script injects these into Claude Code and OpenCode MCP configs automatically.
+
+### 3. Start a session
+
+Open the workspace, then:
+
+```bash
 claude    # or: opencode
 ```
 
-## Dev Mode
-
-If `/home/kasm-user/repot/homepilot-v2` exists (persistent storage), startup automatically reinstalls `hp` as an editable dev install so source edits are reflected immediately without rebuilding the image.
+Both are pre-wired to the homepilot MCP server. Ask Claude to manage your Proxmox cluster directly.
 
 ## Building & Deploying
 
@@ -70,9 +85,6 @@ Each build produces:
 ```bash
 docker build -t ghcr.io/mtclab/kasm-homepilot-workspace:latest .
 
-# Pin homepilot to a specific tag
-docker build --build-arg HP_REF=v2.0.0 -t ghcr.io/mtclab/kasm-homepilot-workspace:v2.0.0 .
-
 echo YOUR_GITHUB_PAT | docker login ghcr.io -u ollikurki --password-stdin
 docker push ghcr.io/mtclab/kasm-homepilot-workspace:latest
 ```
@@ -81,19 +93,18 @@ docker push ghcr.io/mtclab/kasm-homepilot-workspace:latest
 
 1. **Admin Panel** → **Workspaces** → **Add Workspace** → **Custom Image**
 2. **Image**: `ghcr.io/mtclab/kasm-homepilot-workspace:latest`
-3. Enable **Persistent Storage** so `~/.hp/` config survives between sessions
+3. Add `HP_MCP_URL` and `HP_MCP_TOKEN` under **Environment**
 4. Save and assign to users
 
-> Enable persistent storage — without it `~/.hp/.env` is lost on session end and you re-run setup every time.
+> Persistent storage is not required — all state lives on the homelab server.
 
-## Architecture
+## Image Architecture
 
 ```
-kasmweb/core-ubuntu-noble:1.18.0  ← Base: Ubuntu 24.04 headless + KasmVNC
+kasmweb/terminal:1.18.0  ← Base: Ubuntu 24.04 headless + KasmVNC
   │
-  ├── homepilot (hp CLI)  — /opt/hp venv, pinned to HP_REF
-  ├── Claude Code          — npm global, MCP → hp mcp-serve
-  ├── OpenCode 1.14.41     — binary, MCP → hp mcp-serve
+  ├── Claude Code          — npm global, MCP → HP_MCP_URL at startup
+  ├── OpenCode 1.14.41     — binary, MCP → HP_MCP_URL at startup
   ├── Node.js 22 LTS       — for Claude Code
   ├── uv + uvx             — Python package manager
   ├── GitHub CLI           — apt repo

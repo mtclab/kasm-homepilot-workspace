@@ -8,38 +8,53 @@ echo "=== HomePilot Workspace Startup ==="
 
 # ── Ensure PATH in all shell profiles ────────────────────────
 cat >> /home/kasm-user/.bashrc << 'ENVVARS'
-export PATH="/opt/hp/bin:/usr/local/bin:${PATH}"
+export PATH="/usr/local/bin:${PATH}"
 ENVVARS
 
 cat >> /home/kasm-user/.profile << 'ENVVARS'
-export PATH="/opt/hp/bin:/usr/local/bin:${PATH}"
+export PATH="/usr/local/bin:${PATH}"
 ENVVARS
 
-# ── Dev override: reinstall editable from repot if present ───
-# Allows live edits to homepilot-v2 source without rebuilding image.
-HP_DEV_DIR="/home/kasm-user/repot/homepilot-v2"
-if [ -d "$HP_DEV_DIR" ]; then
-    echo "homepilot-v2 found in repot — installing editable (dev mode)..."
-    /opt/hp/bin/pip install --quiet -e "$HP_DEV_DIR" 2>/dev/null \
-        && echo "  → dev install ok" \
-        || echo "  → dev install failed, using baked version"
-fi
+# ── Wire HomePilot MCP from env vars ─────────────────────────
+# Kasm workspace env vars HP_MCP_URL and HP_MCP_TOKEN must be
+# set in the Kasm Admin Panel → Workspace → Environment.
+CLAUDE_SETTINGS="/home/kasm-user/.claude/settings.json"
+OPENCODE_CONFIG="/home/kasm-user/.config/opencode/opencode.json"
 
-# ── HomePilot init check ──────────────────────────────────────
-HP_ENV="$HOME/.hp/.env"
-if [ ! -f "$HP_ENV" ]; then
+if [ -n "$HP_MCP_URL" ]; then
+    echo "Wiring HomePilot MCP → $HP_MCP_URL"
+
+    # Claude Code: inject mcpServers.homepilot with optional auth header
+    if [ -n "$HP_MCP_TOKEN" ]; then
+        jq --arg url "$HP_MCP_URL" --arg tok "$HP_MCP_TOKEN" \
+            '.mcpServers.homepilot = {"url": $url, "headers": {"Authorization": ("Bearer " + $tok)}}' \
+            "$CLAUDE_SETTINGS" > /tmp/claude_settings.json \
+            && mv /tmp/claude_settings.json "$CLAUDE_SETTINGS"
+    else
+        jq --arg url "$HP_MCP_URL" \
+            '.mcpServers.homepilot = {"url": $url}' \
+            "$CLAUDE_SETTINGS" > /tmp/claude_settings.json \
+            && mv /tmp/claude_settings.json "$CLAUDE_SETTINGS"
+    fi
+
+    # OpenCode: inject mcp.homepilot as remote
+    jq --arg url "$HP_MCP_URL" \
+        '.mcp.homepilot = {"type": "remote", "url": $url}' \
+        "$OPENCODE_CONFIG" > /tmp/opencode.json \
+        && mv /tmp/opencode.json "$OPENCODE_CONFIG"
+
+    echo "  → Claude Code and OpenCode MCP configured"
+else
     echo ""
     echo "┌─────────────────────────────────────────────────────┐"
-    echo "│  HomePilot not configured. To get started:          │"
+    echo "│  HP_MCP_URL not set — HomePilot MCP not wired.     │"
     echo "│                                                     │"
-    echo "│  1. mkdir -p ~/.hp                                  │"
-    echo "│  2. Create ~/.hp/.env with at minimum:              │"
-    echo "│       HP_SECRET_KEY=<random hex>                    │"
-    echo "│       HP_PROXMOX_HOST=<your-proxmox-ip>             │"
-    echo "│  3. Run: hp init                                    │"
+    echo "│  Set these in Kasm Admin → Workspace → Environment: │"
+    echo "│    HP_MCP_URL   = http://<homelab-ip>:8000/mcp     │"
+    echo "│    HP_MCP_TOKEN = <token set on the server>         │"
     echo "│                                                     │"
-    echo "│  Generate key: python3 -c                          │"
-    echo "│    \"import secrets; print(secrets.token_hex(32))\"  │"
+    echo "│  On the homelab server, start homepilot:            │"
+    echo "│    hp mcp-serve --transport http --port 8000        │"
     echo "└─────────────────────────────────────────────────────┘"
     echo ""
 fi
@@ -47,7 +62,6 @@ fi
 # ── Print tool versions ───────────────────────────────────────
 echo ""
 echo "=== Installed Tools ==="
-echo "hp:       $(command -v hp > /dev/null 2>&1 && echo 'installed' || echo 'not found')"
 echo "Claude:   $(claude --version 2>/dev/null || echo 'not found')"
 echo "OpenCode: $(opencode --version 2>/dev/null || echo 'not found')"
 echo "Python:   $(python3 --version 2>/dev/null || echo 'not found')"
