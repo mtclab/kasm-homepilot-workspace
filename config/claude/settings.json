@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "homepilot": {
+      "command": "/opt/hp/bin/hp",
+      "args": ["mcp-serve"]
+    }
+  }
+}
