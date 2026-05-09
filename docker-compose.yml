@@ -2,8 +2,15 @@ services:
   kasm-homepilot:
     image: ghcr.io/mtclab/kasm-homepilot-workspace:latest
     container_name: kasm-homepilot
+    restart: unless-stopped
     ports:
       - "6902:6901"
     shm_size: "256m"
     environment:
-      - VNC_PW=password
+      - VNC_PW=${VNC_PW:?VNC_PW must be set — copy .env.example to .env and set a strong password}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6901/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
