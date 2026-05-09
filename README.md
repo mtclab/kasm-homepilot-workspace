@@ -2,7 +2,7 @@
 
 Lightweight Kasm Workspaces terminal image for Proxmox homelab management via [homepilot-v2](https://github.com/mtclab/homepilot-v2). Built on `kasmweb/terminal:1.18.0` (Ubuntu 24.04, headless/terminal), following [Kasm custom image conventions](https://docs.kasm.com/docs/latest/how-to/building_images/).
 
-**HomePilot is NOT installed in this image.** It runs separately on your homelab server. This workspace connects to it via MCP over HTTP.
+**HomePilot is NOT installed in this image.** It runs separately on your homelab server. This workspace connects to it via MCP (HTTPS recommended; HTTP accepted only for loopback).
 
 ## Architecture
 
@@ -17,7 +17,7 @@ Kasm Workspace (this image)              Homelab Server
 ```
 
 MCP wiring is injected at session start from two Kasm workspace env vars:
-- **`HP_MCP_URL`** — e.g. `http://homelab.lan:8000/mcp`
+- **`HP_MCP_URL`** — e.g. `https://homelab.lan:8000/mcp` (HTTPS strongly recommended; HTTP is accepted only for loopback addresses)
 - **`HP_MCP_TOKEN`** — bearer token (must match `HP_MCP_TOKEN` on the server)
 
 ## What's Included
@@ -55,7 +55,7 @@ In Kasm **Admin Panel** → **Workspaces** → your workspace → **Environment*
 
 | Variable | Example value |
 |----------|--------------|
-| `HP_MCP_URL` | `http://192.168.1.10:8000/mcp` |
+| `HP_MCP_URL` | `https://192.168.1.10:8000/mcp` |
 | `HP_MCP_TOKEN` | `your-secret-token` |
 
 At session start, the startup script injects these into Claude Code and OpenCode MCP configs automatically.
