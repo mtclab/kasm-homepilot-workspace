@@ -81,10 +81,6 @@ COPY ./config/opencode/AGENTS.md $HOME/.config/opencode/AGENTS.md
 RUN mkdir -p $HOME/.claude
 COPY ./config/claude/settings.json $HOME/.claude/settings.json
 
-# ── Environment variables for all users ───────────────────────
-COPY ./environment /etc/environment
-RUN chmod 644 /etc/environment
-
 ######### End Customizations ###########
 
 # ── Kasm post-customization steps (required) ──────────────────

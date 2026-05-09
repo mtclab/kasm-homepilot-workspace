@@ -12,11 +12,6 @@ on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      hp_ref:
-        description: "homepilot-v2 git ref to bake in (branch, tag, or SHA)"
-        required: false
-        default: "main"
 
 env:
   REGISTRY: ghcr.io
@@ -43,21 +38,6 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Resolve homepilot ref
-        id: hp
-        run: |
-          # On a published release, use the release tag as HP_REF so the
-          # baked hp version matches the workspace release.  Manual dispatch
-          # can override.  Otherwise fall back to main.
-          if [ "${{ github.event_name }}" = "release" ]; then
-            REF="${{ github.event.release.tag_name }}"
-          elif [ -n "${{ inputs.hp_ref }}" ]; then
-            REF="${{ inputs.hp_ref }}"
-          else
-            REF="main"
-          fi
-          echo "ref=$REF" >> $GITHUB_OUTPUT
 
       - name: Generate version
         id: version
@@ -92,8 +72,6 @@ jobs:
         with:
           context: .
           push: true
-          build-args: |
-            HP_REF=${{ steps.hp.outputs.ref }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -122,8 +100,4 @@ jobs:
             docker pull ghcr.io/${{ github.repository }}:latest
             ```
 
-            ### homepilot-v2 ref baked in
-
-            `HP_REF=${{ steps.hp.outputs.ref }}`
-
-            To pin a specific homepilot version, trigger a manual build with `hp_ref` set to a tag or SHA.
+            HomePilot runs separately on your homelab server — connect via `HP_MCP_URL` + `HP_MCP_TOKEN` workspace env vars.
