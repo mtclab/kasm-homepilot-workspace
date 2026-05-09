@@ -15,6 +15,9 @@ ENV STARTUPDIR=/dockerstartup
 ENV INST_SCRIPTS=$STARTUPDIR/install
 WORKDIR $HOME
 
+# Docker BuildKit provides TARGETARCH (amd64 | arm64)
+ARG TARGETARCH=amd64
+
 ######### Begin Customizations ###########
 
 # ── System packages ───────────────────────────────────────────
@@ -35,22 +38,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Node.js 22 LTS (required for Claude Code) ────────────────
-RUN curl -fsSL "https://deb.nodesource.com/setup_22.x" | bash - \
+# Use signed apt repo instead of piping a setup script to bash.
+RUN mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+       > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @anthropic-ai/claude-code
 
 # ── uv (fast Python package manager) ─────────────────────────
 ARG UV_VERSION=0.11.8
-RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
-    | tar xz -C /tmp \
-    && mv /tmp/uv-x86_64-unknown-linux-gnu/uv /usr/local/bin/uv \
-    && mv /tmp/uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/uvx \
-    && rm -rf /tmp/uv-x86_64-unknown-linux-gnu
+RUN case "${TARGETARCH}" in \
+        amd64) UV_ARCH="x86_64-unknown-linux-gnu" ;; \
+        arm64) UV_ARCH="aarch64-unknown-linux-gnu" ;; \
+        *)     echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_ARCH}.tar.gz" \
+       | tar xz -C /tmp \
+    && mv "/tmp/uv-${UV_ARCH}/uv" /usr/local/bin/uv \
+    && mv "/tmp/uv-${UV_ARCH}/uvx" /usr/local/bin/uvx \
+    && rm -rf "/tmp/uv-${UV_ARCH}"
 
 # ── yq (YAML processor) ───────────────────────────────────────
 ARG YQ_VERSION=v4.52.5
-RUN curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+RUN curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${TARGETARCH}" \
     -o /usr/bin/yq && chmod +x /usr/bin/yq
 
 # ── GitHub CLI ────────────────────────────────────────────────
@@ -65,8 +79,13 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 
 # ── OpenCode (terminal AI coding agent) ──────────────────────
 ARG OPENCODE_VERSION=1.14.41
-RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
-    -o /tmp/opencode.tar.gz \
+RUN case "${TARGETARCH}" in \
+        amd64) OC_ARCH="x64" ;; \
+        arm64) OC_ARCH="arm64" ;; \
+        *)     echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-${OC_ARCH}.tar.gz" \
+       -o /tmp/opencode.tar.gz \
     && tar xzf /tmp/opencode.tar.gz -C /tmp \
     && mv /tmp/opencode /usr/local/bin/opencode \
     && chmod +x /usr/local/bin/opencode \
